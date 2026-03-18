@@ -1,333 +1,709 @@
-# CloudBoard — Week 01 Progress Report
+# CloudBoard — Architecture
 
-> **Assessed against**: `Master_Prompt.txt` (266 lines, 22 numbered requirements + architecture/data/CI/CD/API/auth/functions/week-plan/free-tier/output-format/style sections)
->
-> **Build status**: ✅ **Compiles successfully** (`dotnet build` — zero errors, zero warnings)
->
-> **Last updated**: Assessment v2 — includes `InMemoryDataSeeder` addition
+> **Audience**: Students learning Clean Architecture, Azure, and .NET 9.
+> This document describes the high-level architecture, project responsibilities, data flow, and key design decisions.
 
 ---
 
-## Executive Summary
+## Table of Contents
 
-| Area | Status | Score |
-|---|---|---|
-| Solution structure & project layout | ✅ Done | 10/10 |
-| Domain layer (entities, enums, value objects) | ✅ Done | 10/10 |
-| Application layer (CQRS, DTOs, interfaces, validators, DI) | ✅ Done | 10/10 |
-| Infrastructure layer (in-memory repos, Cosmos stubs, blob, functions, **seed data**) | ✅ Done | 10/10 |
-| API layer (10 controllers, Program.cs, config, **auto-seed on startup**) | ✅ Done | 10/10 |
-| Solution file (`.slnx`) with Solution Items | ⚠️ Naming issue | 8/10 |
-| `CloudBoard.Client` (Blazor WASM) | ❌ Missing | 0/10 |
-| `CloudBoard.AdminPortal` (Blazor Server) | ❌ Missing | 0/10 |
-| `CloudBoard.Functions` (Azure Functions v4 isolated) | ❌ Missing | 0/10 |
-| `/docs` folder (5 + 1 markdown files) | ✅ Done | 10/10 |
-| GitHub Actions workflows (4) | ❌ Missing | 0/10 |
-| **Overall Week 01 completion** | | **~72%** |
-
----
-
-## Detailed Assessment by Prompt Requirement
-
-### ✅ Requirement 1 — Complete VS solution that compiles
-- **Status**: Pass. `dotnet build` succeeds with zero errors.
-
-### ✅ Requirement 2 — Clean Architecture with full Controllers
-- **Status**: Pass.
-- Four layers: `Domain` → `Application` → `Infrastructure` → `Api`.
-- Project references enforce the dependency rule (inner layers never reference outer).
-- Full controllers (not minimal APIs) in `CloudBoard.Api/Controllers/`.
-
-### ✅ Requirement 3 — REST + minimal CQRS
-- **Status**: Pass.
-- Commands/queries with handlers. `ContinuationResult<T>` for paging.
-
-### ⚠️ Requirement 4 — Week-by-week branch plan
-- **Status**: Docs exist (`docs/week-by-week.md`, ~20K chars) with full 9-week plan, Gantt chart, and per-week file listings.
-- **Issue**: Actual Git branches (`week01`, `week02`, …) not yet created. Only `master` branch exists.
-
-### ⚠️ Requirement 5 — Local dev setup + deployment targets
-- **Status**: Docs exist (`docs/local-dev.md`, ~13K chars; `docs/azure-clickops.md`, ~19K chars).
-- **Issue**: 3 of the 7 projects referenced in the docs don't exist yet (Client, AdminPortal, Functions).
-
-### ✅ Requirement 6 — Click-ops first
-- **Status**: Pass. `docs/azure-clickops.md` provides step-by-step portal instructions.
-
-### ⚠️ Requirement 7 — Use `ClaudeTest.slnx`, projects remain `CloudBoard.*`
-- **Status**: Partial.
-- Solution file exists but is named `CloudBoard.slnx` (and `CloudBoard.sln`), **not** `ClaudeTest.slnx` as required.
-- Projects are correctly named `CloudBoard.*`.
-
-### ❌ Requirement 8 — Standalone Blazor WASM for Client
-- **Status**: `CloudBoard.Client` project not created.
-
-### ❌ Requirement 9 — Blazor Web App with InteractiveServer for Admin Portal
-- **Status**: `CloudBoard.AdminPortal` project not created.
-
-### ❌ Requirement 10 — Azure Functions v4 isolated worker
-- **Status**: `CloudBoard.Functions` project not created.
-- Infrastructure stubs (`IFunctionsClient`, `NoOpFunctionsClient`, `FunctionsClient`) are ready.
-
-### ✅ Requirement 11 — MediatR vs. hand-rolled CQRS split
-- **Status**: Pass. Exactly as specified:
-  - **MediatR**: `Workspaces`, `Notes`, `Tags` (use `IRequest`/`IRequestHandler`).
-  - **Hand-rolled**: `Tasks`, `Files`, `Comments`, `Memberships`, `Invites`, `ActivityLog`, `Admin` (use `ICommandHandler`/`IQueryHandler`).
-
-### ✅ Requirement 12 — Cosmos DB SDK with single container + /workspaceId
-- **Status**: Pass.
-  - `Microsoft.Azure.Cosmos` SDK used directly.
-  - Container: `WorkspaceData`, Partition key: `/workspaceId`.
-  - `CosmosRepositoryBase<T>` with `ToFeedIterator()` (not `ToListAsync()`).
-  - Warning about Cosmos LINQ ≠ EF LINQ in `CosmosRepositoryBase` XML docs.
-
-### ✅ Requirement 13 — Auth placeholder (commented out for week01)
-- **Status**: Pass.
-  - `[Authorize]` attributes present but commented out on all controllers.
-  - `Program.cs` has auth/authorization code fully written but commented out.
-  - `appsettings.json` has `AzureAd` section with placeholder values.
-  - First-login middleware written and commented out with "week02" note.
-
-### ✅ Requirement 14 — Projects nested under `src/`
-- **Status**: Pass. All four projects under `src/CloudBoard.*/`.
-
-### ⚠️ Requirement 15 — Solution Items in `.slnx`
-- **Status**: Partial.
-  - `CloudBoard.slnx` has a `/Solution Items/` folder containing: `.editorconfig`, `.gitignore`, `Directory.Build.props`, `Directory.Packages.props`, `global.json`, `Master_Prompt.txt`, `README.md`.
-  - All required files are included **plus** `Master_Prompt.txt` (bonus).
-  - **Issue**: File is named `CloudBoard.slnx`, not `ClaudeTest.slnx`.
-
-### ✅ Requirement 16 — In-memory stub repos for week01
-- **Status**: Pass. All 9 in-memory repositories implemented and registered as singletons.
-  - `InMemoryWorkspaceRepository`, `InMemoryTaskRepository`, `InMemoryNoteRepository`, `InMemoryFileRepository`, `InMemoryTagRepository`, `InMemoryCommentRepository`, `InMemoryMembershipRepository`, `InMemoryInviteRepository`, `InMemoryActivityLogRepository`.
-  - Cosmos repos pre-built for week04 swap.
-  - **`InMemoryDataSeeder`** populates all repos with deterministic sample data on startup (2 items per entity, owner ID `1969d1a7-...`). Feature-flag guarded — only when `UseCosmosDb = false`.
-
-### N/A Requirement 17 — `Microsoft.Authentication.WebAssembly.Msal`
-- Package version listed in `Directory.Packages.props` (`9.0.5`).
-- Cannot be wired until `CloudBoard.Client` project exists.
-
-### N/A Requirement 18 — Server-side OpenID Connect for Admin Portal
-- Cannot be wired until `CloudBoard.AdminPortal` project exists.
-
-### ⚠️ Requirement 19 — Port assignments
-- **Status**: Partial.
-  - API port `https://localhost:7100`: Referenced in CORS config and docs. Actual `launchSettings.json` not verified.
-  - Admin Portal `https://localhost:7200`: Referenced in CORS config. Project missing.
-  - Client WASM `https://localhost:7300`: Referenced in CORS config. Project missing.
-  - Functions `http://localhost:7071`: Referenced in `appsettings.json`. Project missing.
-
-### ✅ Requirement 20 — Continuation-token-based paging
-- **Status**: Pass.
-  - `ContinuationResult<T>` with `Items` + `ContinuationToken` used consistently.
-  - All list endpoints accept `pageSize` + `continuationToken` query parameters.
-  - In-memory repos simulate continuation via integer index.
-  - Cosmos repos use native continuation tokens via `ToFeedIterator()`.
-
-### N/A Requirement 21 — 2 app registrations (Client + API, Admin shares API)
-- Documented in config placeholders. Cannot be verified until auth is wired.
+1. [Solution Overview](#solution-overview)
+2. [High-Level System Diagram](#high-level-system-diagram)
+3. [Clean Architecture Layers](#clean-architecture-layers)
+4. [Project Dependency Graph](#project-dependency-graph)
+5. [Data Model (ER Diagram)](#data-model-er-diagram)
+6. [API Request Flow](#api-request-flow)
+7. [CQRS Pattern — MediatR vs. Hand-Rolled](#cqrs-pattern--mediatr-vs-hand-rolled)
+8. [Authentication & Authorization](#authentication--authorization)
+9. [Cosmos DB Design](#cosmos-db-design)
+10. [Blob Storage Design](#blob-storage-design)
+11. [Azure Functions Integration](#azure-functions-integration)
+12. [Paging Strategy](#paging-strategy)
+13. [Feature Flags & Swappable Infrastructure](#feature-flags--swappable-infrastructure)
 
 ---
 
-## What Exists — File Inventory
+## Solution Overview
 
-### Solution Root ✅
-| File | Present | Notes |
-|---|---|---|
-| `CloudBoard.slnx` | ✅ | Should be `ClaudeTest.slnx` per prompt #7 |
-| `CloudBoard.sln` | ✅ | Legacy format also present |
-| `global.json` | ✅ | SDK `9.0.312`, `latestPatch` rollForward |
-| `Directory.Build.props` | ✅ | net9.0, nullable, implicit usings, deterministic |
-| `Directory.Packages.props` | ✅ | CPM with all NuGet versions centralized |
-| `.editorconfig` | ✅ | Full C# style rules |
-| `.gitignore` | ✅ | VS-standard |
-| `README.md` | ✅ | Project table, quick-start, doc links |
-| `Master_Prompt.txt` | ✅ | Original requirements |
+CloudBoard is a "tasks / notes / files" collaboration platform organized around **Workspaces**.
+Each workspace can have members, tags, comments, and an activity log.
 
-### Domain Layer ✅ (9 entities, 4 enums, 1 value object)
-| File | Status |
-|---|---|
-| `Entities/BaseEntity.cs` | ✅ Id, DocType, CreatedUtc, UpdatedUtc |
-| `Entities/Workspace.cs` | ✅ WorkspaceId computed property |
-| `Entities/TaskItem.cs` | ✅ TagIds inline |
-| `Entities/NoteItem.cs` | ✅ TagIds inline |
-| `Entities/FileItem.cs` | ✅ Blob reference + extension point comments |
-| `Entities/Tag.cs` | ✅ |
-| `Entities/Comment.cs` | ✅ Polymorphic parent (ParentType + ParentId) |
-| `Entities/Membership.cs` | ✅ RoleInWorkspace enum |
-| `Entities/Invite.cs` | ✅ TokenHash, ExpiresUtc |
-| `Entities/ActivityLog.cs` | ✅ DateId (YYYYMMDD), DetailsJson |
-| `Enums/ActivityAction.cs` | ✅ 10 values |
-| `Enums/EntityType.cs` | ✅ 8 values |
-| `Enums/RoleInWorkspace.cs` | ✅ Member, WorkspaceAdmin, SystemAdmin |
-| `Enums/ParentType.cs` | ✅ Task, Note, File |
-| `ValueObjects/TagSet.cs` | ✅ Add/Remove/Contains |
-
-### Application Layer ✅ (8 DTOs, 10 interfaces, 12 validators, full CQRS)
-| Area | Files | Status |
-|---|---|---|
-| DTOs | `TaskDto`, `WorkspaceDto`, `NoteDto`, `FileDto`, `TagDto`, `CommentDto`, `MembershipDto`, `InviteDto`, `ActivityLogDto` | ✅ All sealed records |
-| Interfaces | `ITaskRepository`, `IWorkspaceRepository`, `INoteRepository`, `IFileRepository`, `ITagRepository`, `ICommentRepository`, `IMembershipRepository`, `IInviteRepository`, `IActivityLogRepository`, `IBlobStorageService`, `IFunctionsClient`, `IFirstLoginService` | ✅ 12 interfaces |
-| Handlers | Tasks, Workspaces, Notes, Files, Tags, Comments, Memberships, Invites, ActivityLog, Admin | ✅ Full CRUD |
-| Validators | 12 FluentValidation classes | ✅ |
-| Common | `ICommandHandler<T,R>`, `ICommandHandler<T>`, `IQueryHandler<T,R>`, `ContinuationResult<T>` | ✅ |
-| DI | `DependencyInjection.cs` | ✅ MediatR + hand-rolled + FluentValidation |
-
-### Infrastructure Layer ✅ (9+9 repos, blob, functions, seed service, **data seeder**)
-| Area | Files | Status |
-|---|---|---|
-| In-Memory Repos | 9 repositories (all entities) | ✅ Singleton, dict-based |
-| **In-Memory Seed Data** | `InMemoryDataSeeder.cs` | ✅ Deterministic sample data for all 9 entities |
-| Cosmos Repos | 9 repositories + `CosmosRepositoryBase<T>` + `CosmosOptions` | ✅ Pre-built for week04 |
-| Blob Storage | `InMemoryBlobStorageService`, `BlobStorageService` | ✅ Both implementations |
-| Functions | `NoOpFunctionsClient`, `FunctionsClient`, `FunctionsClientOptions` | ✅ Both implementations |
-| Services | `FirstLoginService` | ✅ Auto-create personal workspace |
-| DI | `DependencyInjection.cs` | ✅ Feature-flag-based switching |
-
-#### Seed Data Details (`InMemoryDataSeeder`)
-Owner ID: `1969d1a7-2a77-40a9-b811-6c69e525c9d6`
-
-| Entity | Count | Key Details |
-|---|---|---|
-| Workspaces | 2 | "Project Alpha" + "Personal Notes" |
-| Tags | 2 | "Bug", "Urgent" |
-| Tasks | 2 | One open (tagged Bug+Urgent), one completed |
-| Notes | 2 | Architecture decision + sprint retro (markdown body) |
-| Files | 2 | PNG + PDF metadata (no real blob bytes) |
-| Memberships | 2 | Owner as WorkspaceAdmin, second user as Member |
-| Comments | 2 | One on a task, one on a note (different users) |
-| Invites | 2 | One pending/valid, one expired |
-| Activity Logs | 2 | Workspace creation + task creation events |
-
-- All IDs are deterministic (`ws-00000000-0001`, `task-00000000-0001`, etc.) for consistent Swagger/Postman testing.
-- Auto-runs on startup when `UseCosmosDb = false` (feature-flag guarded in `Program.cs`).
-
-### API Layer ✅ (10 controllers, Program.cs, config)
-| Controller | Route | Dispatch | Status |
+| Project | SDK / Type | Purpose | Local Port |
 |---|---|---|---|
-| `HealthController` | `api/health` | Direct | ✅ |
-| `WorkspacesController` | `api/workspaces` | MediatR | ✅ Full CRUD |
-| `TasksController` | `api/workspaces/{id}/tasks` | Hand-rolled | ✅ Full CRUD |
-| `NotesController` | `api/workspaces/{id}/notes` | MediatR | ✅ Full CRUD |
-| `FilesController` | `api/workspaces/{id}/files` | Hand-rolled | ✅ Upload/Download/List/Delete |
-| `TagsController` | `api/workspaces/{id}/tags` | MediatR | ✅ Create/List/Delete |
-| `CommentsController` | `api/workspaces/{id}/comments` | Hand-rolled | ✅ Polymorphic parent |
-| `MembershipsController` | `api/workspaces/{id}/memberships` | Hand-rolled | ✅ Add/Remove/UpdateRole/List |
-| `InvitesController` | `api/workspaces/{id}/invites` | Hand-rolled | ✅ Create/Accept/Get/List |
-| `AdminController` | `api/admin` | Hand-rolled | ✅ ListAll (501 placeholder), Activity, Delete |
+| `CloudBoard.Domain` | Class Library | Entities, value objects, enums — zero NuGet deps | — |
+| `CloudBoard.Application` | Class Library | CQRS commands/queries, DTOs, interfaces, validators | — |
+| `CloudBoard.Infrastructure` | Class Library | Cosmos repos, Blob storage, Functions client | — |
+| `CloudBoard.Api` | ASP.NET Core Web API | REST controllers, auth, DI, Swagger | `https://localhost:7100` |
+| `CloudBoard.Client` | Blazor WASM (standalone) | End-user UI, calls API via HttpClient | `https://localhost:7300` |
+| `CloudBoard.AdminPortal` | Blazor Server (InteractiveServer) | Admin UI for SystemAdmin + WorkspaceAdmin | `https://localhost:7200` |
+| `CloudBoard.Functions` | Azure Functions v4 (isolated worker) | Serverless jobs triggered by the API only | `http://localhost:7071` |
 
-**`Program.cs` startup pipeline:**
-1. `AddApplication()` — MediatR + hand-rolled handlers + FluentValidation
-2. `AddInfrastructure()` — repos, blob, functions (feature-flag switched)
-3. **`SeedInMemoryDataAsync()`** — auto-populates sample data when `UseCosmosDb = false`
-4. Swagger (dev only), CORS, auth placeholder (commented out), `MapControllers()`
+---
 
-### Docs Folder ✅
-| File | Size | Status |
+## High-Level System Diagram
+
+```mermaid
+graph LR
+    subgraph "Browser"
+        WASM["CloudBoard.Client<br/>(Blazor WASM)"]
+        ADMIN["CloudBoard.AdminPortal<br/>(Blazor Server)"]
+    end
+
+    subgraph "Azure / Local"
+        API["CloudBoard.Api<br/>(ASP.NET Core Web API)"]
+        FUNC["CloudBoard.Functions<br/>(Azure Functions v4)"]
+        COSMOS[("Azure Cosmos DB<br/>NoSQL")]
+        BLOB[("Azure Blob Storage")]
+        ENTRA["Microsoft Entra<br/>External ID"]
+    end
+
+    WASM -- "REST + JWT" --> API
+    ADMIN -- "REST + Cookie/OIDC" --> API
+    API -- "HTTP + Function Key" --> FUNC
+    API -- "Cosmos SDK" --> COSMOS
+    API -- "Blob SDK" --> BLOB
+    FUNC -- "Cosmos SDK" --> COSMOS
+    WASM -- "MSAL Login" --> ENTRA
+    ADMIN -- "OIDC Login" --> ENTRA
+    API -- "Validate JWT" --> ENTRA
+
+    style WASM fill:#4FC3F7,stroke:#0288D1,color:#000
+    style ADMIN fill:#7986CB,stroke:#303F9F,color:#fff
+    style API fill:#81C784,stroke:#388E3C,color:#000
+    style FUNC fill:#FFB74D,stroke:#F57C00,color:#000
+    style COSMOS fill:#CE93D8,stroke:#7B1FA2,color:#000
+    style BLOB fill:#A5D6A7,stroke:#388E3C,color:#000
+    style ENTRA fill:#EF9A9A,stroke:#C62828,color:#000
+```
+
+### Key rules
+
+- **Client never calls Functions directly** — the API is the single gateway.
+- **AdminPortal calls the same API** — it shares the API app registration in Entra.
+- **Functions are HTTP-triggered with function keys** — only the API knows the key.
+
+---
+
+## Clean Architecture Layers
+
+```mermaid
+graph TB
+    subgraph "Outer — Infrastructure & Presentation"
+        API["CloudBoard.Api<br/>(Controllers, Middleware)"]
+        INFRA["CloudBoard.Infrastructure<br/>(Cosmos, Blob, Functions)"]
+        CLIENT["CloudBoard.Client"]
+        PORTAL["CloudBoard.AdminPortal"]
+        FUNCS["CloudBoard.Functions"]
+    end
+
+    subgraph "Middle — Application"
+        APP["CloudBoard.Application<br/>(Commands, Queries, DTOs, Interfaces)"]
+    end
+
+    subgraph "Inner — Domain"
+        DOM["CloudBoard.Domain<br/>(Entities, Value Objects, Enums)"]
+    end
+
+    API --> APP
+    INFRA --> APP
+    APP --> DOM
+    API --> INFRA
+
+    style DOM fill:#FFEB3B,stroke:#F57F17,color:#000
+    style APP fill:#81D4FA,stroke:#0277BD,color:#000
+    style INFRA fill:#C5E1A5,stroke:#558B2F,color:#000
+    style API fill:#81C784,stroke:#388E3C,color:#000
+```
+
+### The Dependency Rule
+
+> Inner layers **never** reference outer layers.
+
+| Layer | Can reference | Cannot reference |
 |---|---|---|
-| `docs/architecture.md` | ~25K chars | ✅ Mermaid diagrams, layer descriptions, data model, paging strategy, feature flags |
-| `docs/week-by-week.md` | ~20K chars | ✅ 9-week plan, Gantt chart, per-week file listings, branch diagram |
-| `docs/local-dev.md` | ~13K chars | ✅ Prerequisites, run instructions, port table |
-| `docs/azure-clickops.md` | ~19K chars | ✅ Step-by-step portal setup for all Azure resources |
-| `docs/naming-conventions.md` | ~15K chars | ✅ Resource naming, environment naming |
-| `docs/week01-progress-report.md` | — | ✅ This file — tracks all deliverables against Master Prompt |
+| **Domain** | Nothing | Application, Infrastructure, Api |
+| **Application** | Domain | Infrastructure, Api |
+| **Infrastructure** | Domain, Application | Api |
+| **Api** | Application, Infrastructure | — |
+
+The Application layer defines **interfaces** (e.g., `IWorkspaceRepository`, `IBlobStorageService`).
+The Infrastructure layer provides **implementations** (e.g., `CosmosWorkspaceRepository`, `BlobStorageService`).
+The Api layer wires them together in `Program.cs` via dependency injection.
 
 ---
 
-## What's Missing
+## Project Dependency Graph
 
-### ❌ 1. `CloudBoard.Client` — Blazor WASM Standalone (Prompt #8, #9, #17)
-**Priority: HIGH**
+```mermaid
+graph TD
+    Api["CloudBoard.Api"] --> Infra["CloudBoard.Infrastructure"]
+    Api --> App["CloudBoard.Application"]
+    Infra --> App
+    Infra --> Dom["CloudBoard.Domain"]
+    App --> Dom
+    Func["CloudBoard.Functions"] --> Infra
+    Func --> App
 
-Required: A standalone Blazor WASM project (`Microsoft.NET.Sdk.BlazorWebAssembly`) that:
-- Runs on `https://localhost:7300`
-- Calls the API via `HttpClient` pointed at `https://localhost:7100`
-- References `Microsoft.Authentication.WebAssembly.Msal` (auth placeholder for week01)
-- Has a basic shell (layout, nav, placeholder pages)
+    style Api fill:#81C784,stroke:#388E3C
+    style Infra fill:#C5E1A5,stroke:#558B2F
+    style App fill:#81D4FA,stroke:#0277BD
+    style Dom fill:#FFEB3B,stroke:#F57F17
+    style Func fill:#FFB74D,stroke:#F57C00
+```
 
-### ❌ 2. `CloudBoard.AdminPortal` — Blazor Server InteractiveServer (Prompt #9, #18)
-**Priority: HIGH**
-
-Required: A Blazor Web App (`Microsoft.NET.Sdk.Web`) with `@rendermode InteractiveServer` that:
-- Runs on `https://localhost:7200`
-- Uses server-side OpenID Connect (`Microsoft.Identity.Web`) — placeholder for week01
-- Has SystemAdmin + WorkspaceAdmin placeholder pages
-
-### ❌ 3. `CloudBoard.Functions` — Azure Functions v4 Isolated (Prompt #10, Functions section)
-**Priority: MEDIUM**
-
-Required: An Azure Functions project with 3 HTTP-triggered functions:
-- `GenerateDailyWorkspaceSummary`
-- `ProcessFileVirusScanPlaceholder`
-- `CleanupExpiredInvites`
-
-The Infrastructure layer already has `IFunctionsClient` and `FunctionsClient` ready to call these.
-
-### ❌ 4. GitHub Actions Workflows (CI/CD section)
-**Priority: LOW** (can be deferred to later weeks)
-
-Required 4 workflows:
-- Static Web Apps deploy (Client WASM)
-- App Service deploy (API)
-- App Service deploy (Admin Portal)
-- Functions deploy
-
-### ⚠️ 5. Solution File Naming
-**Priority: LOW**
-
-Prompt #7 says: *"keep ClaudeTest.slnx"*. Current file is `CloudBoard.slnx`. Should be renamed to `ClaudeTest.slnx`.
+> `CloudBoard.Client` and `CloudBoard.AdminPortal` are standalone front-end apps — they call the API over HTTP and have **no project reference** to any backend project.
 
 ---
 
-## Minor Observations (Non-blocking)
+## Data Model (ER Diagram)
 
-| # | Observation | Severity |
+All entities live in a **single Cosmos container** (`WorkspaceData`) with partition key `/workspaceId` and a `docType` discriminator.
+
+```mermaid
+erDiagram
+    WORKSPACE ||--o{ MEMBERSHIP : has
+    WORKSPACE ||--o{ INVITE : issues
+    WORKSPACE ||--o{ TASK_ITEM : contains
+    WORKSPACE ||--o{ NOTE_ITEM : contains
+    WORKSPACE ||--o{ FILE_ITEM : contains
+    WORKSPACE ||--o{ TAG : contains
+    WORKSPACE ||--o{ COMMENT : contains
+    WORKSPACE ||--o{ ACTIVITY_LOG : records
+    TASK_ITEM ||--o{ COMMENT : "has (via parentId + parentType)"
+    NOTE_ITEM ||--o{ COMMENT : "has (via parentId + parentType)"
+    FILE_ITEM ||--o{ COMMENT : "has (via parentId + parentType)"
+    TASK_ITEM }o--o{ TAG : "tagged_with (via TagIds list)"
+    NOTE_ITEM }o--o{ TAG : "tagged_with (via TagIds list)"
+    FILE_ITEM }o--o{ TAG : "tagged_with (via TagIds list)"
+
+    WORKSPACE {
+        string id PK
+        string docType "= Workspace"
+        string name
+        string ownerUserId
+        datetime createdUtc
+        datetime updatedUtc
+    }
+    MEMBERSHIP {
+        string id PK
+        string workspaceId FK
+        string userId
+        RoleInWorkspace roleInWorkspace "Member | WorkspaceAdmin"
+        datetime createdUtc
+        datetime updatedUtc
+    }
+    INVITE {
+        string id PK
+        string workspaceId FK
+        string email
+        string tokenHash
+        datetime expiresUtc
+        datetime createdUtc
+        datetime updatedUtc
+    }
+    TASK_ITEM {
+        string id PK
+        string workspaceId FK
+        string title
+        bool isDone
+        string_array tagIds "denormalised"
+        datetime createdUtc
+        datetime updatedUtc
+    }
+    NOTE_ITEM {
+        string id PK
+        string workspaceId FK
+        string title
+        string body
+        string_array tagIds "denormalised"
+        datetime createdUtc
+        datetime updatedUtc
+    }
+    FILE_ITEM {
+        string id PK
+        string workspaceId FK
+        string fileName
+        string contentType
+        long sizeBytes
+        string blobName
+        string_array tagIds "denormalised"
+        datetime uploadedUtc
+        datetime createdUtc
+        datetime updatedUtc
+    }
+    TAG {
+        string id PK
+        string workspaceId FK
+        string name
+        datetime createdUtc
+        datetime updatedUtc
+    }
+    COMMENT {
+        string id PK
+        string workspaceId FK
+        ParentType parentType "Task | Note | File"
+        string parentId
+        string userId
+        string body
+        datetime createdUtc
+        datetime updatedUtc
+    }
+    ACTIVITY_LOG {
+        string id PK
+        string workspaceId FK
+        string userId
+        ActivityAction action
+        EntityType entityType
+        string entityId
+        string detailsJson
+        int dateId "YYYYMMDD"
+        datetime occurredUtc
+        datetime createdUtc
+        datetime updatedUtc
+    }
+```
+
+### Key design decisions
+
+| Decision | Reason |
+|---|---|
+| Single container with `docType` discriminator | Cosmos free tier allows only 1 container with shared throughput (1000 RU/s). Splitting later is easy because all queries already filter by `docType`. |
+| Partition key = `/workspaceId` | All data for a workspace lives in the same logical partition. Queries scoped to a workspace are cheap single-partition reads. |
+| Tag IDs stored inline on items (`TagIds` list) | Avoids cross-partition joins. Cosmos has no JOIN across partitions — denormalisation is the standard pattern. |
+| Comment uses `ParentType` + `ParentId` | Polymorphic reference avoids three separate comment tables. Common in document databases. |
+| `DateId` on ActivityLog (int `YYYYMMDD`) | Enables cheap range filtering without full datetime comparison — useful for daily summaries. |
+
+---
+
+## API Request Flow
+
+### MediatR flow (Workspaces, Notes, Tags)
+
+```mermaid
+sequenceDiagram
+    participant C as Client / Browser
+    participant Ctrl as WorkspacesController
+    participant M as MediatR
+    participant H as CreateWorkspaceHandler
+    participant R as IWorkspaceRepository
+    participant DB as Cosmos / InMemory
+
+    C->>Ctrl: POST /api/workspaces { name }
+    Ctrl->>M: Send(CreateWorkspaceCommand)
+    M->>H: Handle(command, ct)
+    H->>R: CreateAsync(workspace, ct)
+    R->>DB: UpsertItemAsync
+    DB-->>R: workspace
+    R-->>H: workspace
+    H-->>M: WorkspaceDto
+    M-->>Ctrl: WorkspaceDto
+    Ctrl-->>C: 201 Created + WorkspaceDto
+```
+
+### Hand-rolled flow (Tasks, Files, Comments, etc.)
+
+```mermaid
+sequenceDiagram
+    participant C as Client / Browser
+    participant Ctrl as TasksController
+    participant H as CreateTaskHandler
+    participant R as ITaskRepository
+    participant DB as Cosmos / InMemory
+
+    C->>Ctrl: POST /api/workspaces/{id}/tasks { title }
+    Ctrl->>H: HandleAsync(CreateTaskCommand, ct)
+    H->>R: CreateAsync(taskItem, ct)
+    R->>DB: UpsertItemAsync
+    DB-->>R: taskItem
+    R-->>H: taskItem
+    H-->>Ctrl: TaskDto
+    Ctrl-->>C: 201 Created + TaskDto
+```
+
+> **Why both patterns?** Students learn MediatR (industry standard) and hand-rolled CQRS (simpler, less magic). This makes it easier to understand what MediatR does under the hood.
+
+---
+
+## CQRS Pattern — MediatR vs. Hand-Rolled
+
+```mermaid
+graph LR
+    subgraph "MediatR (Workspaces, Notes, Tags)"
+        CMD1["IRequest&lt;TResult&gt;"] --> PIPE["MediatR Pipeline"]
+        PIPE --> HANDLER1["IRequestHandler&lt;T, TResult&gt;"]
+    end
+
+    subgraph "Hand-Rolled (Tasks, Files, Comments, Memberships, Invites, ActivityLog, Admin)"
+        CMD2["Plain record"] --> HANDLER2["ICommandHandler&lt;T, TResult&gt;<br/>or IQueryHandler&lt;T, TResult&gt;"]
+    end
+
+    style CMD1 fill:#81D4FA,stroke:#0277BD
+    style PIPE fill:#B39DDB,stroke:#512DA8
+    style HANDLER1 fill:#A5D6A7,stroke:#388E3C
+    style CMD2 fill:#FFE082,stroke:#F9A825
+    style HANDLER2 fill:#FFCC80,stroke:#EF6C00
+```
+
+| Aspect | MediatR | Hand-Rolled |
 |---|---|---|
-| 1 | **Duplicate request records** — `CreateTaskRequest`/`UpdateTaskRequest` defined in both `DTOs/TaskDto.cs` and `Controllers/TasksController.cs` (different namespaces, no build error, but may confuse students) | Low |
-| 2 | **`TagSet` value object unused** — Entities use `List<string> TagIds` directly; `TagSet` is defined but never referenced | Low |
-| 3 | **In-memory repos not thread-safe** — Use `Dictionary<>` not `ConcurrentDictionary<>` (fine for single-user dev, but a potential teaching point) | Low |
-| 4 | **`.csproj` files missing opening `<Project>` tag** — Files start with `<PropertyGroup>` directly. MSBuild still resolves this, but technically malformed | Low |
-| 5 | **`ListAllWorkspacesHandler` throws `NotImplementedException`** — By design (TODO week07), `AdminController` catches it and returns 501 | Info |
-| 6 | **Seed file metadata has no blob bytes** — `InMemoryDataSeeder` creates `FileItem` records but does not seed matching entries in `InMemoryBlobStorageService`. Download of seeded files will throw `FileNotFoundException`. Acceptable for week01 — students can upload real files via Swagger. | Low |
+| **Used for** | Workspaces, Notes, Tags | Tasks, Files, Comments, Memberships, Invites, ActivityLog, Admin |
+| **Command type** | Implements `IRequest<T>` | Plain `record` class |
+| **Handler type** | `IRequestHandler<TCommand, TResult>` | `ICommandHandler<TCommand, TResult>` / `IQueryHandler<TQuery, TResult>` |
+| **Registration** | Auto-scanned by `AddMediatR()` | Manual registration in `DependencyInjection.cs` |
+| **Pipeline behaviours** | Supports behaviours (validation, logging) | Add manually if needed |
+| **Controller call** | `mediator.Send(command)` | `handler.HandleAsync(command, ct)` |
+
+### When to use which
+
+- **MediatR**: Great for large teams, cross-cutting pipeline behaviours, when you want plug-and-play handler discovery.
+- **Hand-rolled**: Simpler, more explicit, easier to debug, fewer dependencies.
+- **CloudBoard uses both** so students can compare and choose for their own projects.
 
 ---
 
-## Completion Checklist
+## Authentication & Authorization
 
-| # | Week 01 Deliverable | Done? |
+### Auth flow overview
+
+```mermaid
+sequenceDiagram
+    participant User as User (Browser)
+    participant WASM as CloudBoard.Client<br/>(Blazor WASM)
+    participant Entra as Microsoft Entra<br/>External ID
+    participant API as CloudBoard.Api
+    participant Cosmos as Cosmos DB
+
+    User->>WASM: Open app
+    WASM->>Entra: Redirect to login (MSAL)
+    Entra-->>WASM: id_token + access_token
+    WASM->>API: GET /api/workspaces<br/>Authorization: Bearer {token}
+    API->>API: Validate JWT (issuer, audience, signature)
+    API->>Cosmos: Check Membership for workspace
+    Cosmos-->>API: Membership record
+    API-->>WASM: 200 OK / 403 Forbidden
+```
+
+### Role model
+
+```mermaid
+graph TD
+    subgraph "Global Roles (App Roles in Entra)"
+        SA["SystemAdmin"]
+        U["User"]
+    end
+
+    subgraph "Workspace Roles (Membership in Cosmos)"
+        WA["WorkspaceAdmin"]
+        M["Member"]
+    end
+
+    SA --> |"full access"| ADMIN["AdminController"]
+    SA --> |"full access"| ALL["All Workspace Endpoints"]
+    U --> |"must check"| MEMBERSHIP{{"Membership<br/>check"}}
+    MEMBERSHIP --> WA
+    MEMBERSHIP --> M
+
+    WA --> |"can manage members"| MGMT["Memberships, Invites"]
+    WA --> |"can CRUD"| ITEMS["Tasks, Notes, Files, Tags, Comments"]
+    M --> |"can CRUD"| ITEMS
+
+    style SA fill:#EF9A9A,stroke:#C62828
+    style U fill:#81D4FA,stroke:#0277BD
+    style WA fill:#FFE082,stroke:#F9A825
+    style M fill:#C5E1A5,stroke:#558B2F
+```
+
+| Role | Scope | Stored in | Access |
+|---|---|---|---|
+| `SystemAdmin` | Global | Entra app role | Full admin portal + all workspaces |
+| `User` | Global | Entra app role (default) | Must be a workspace member to access workspace data |
+| `WorkspaceAdmin` | Per-workspace | Cosmos `Membership` (roleInWorkspace) | Manage members, invites; full CRUD within workspace |
+| `Member` | Per-workspace | Cosmos `Membership` (roleInWorkspace) | CRUD tasks, notes, files, tags, comments within workspace |
+
+### Auth configuration per app
+
+| App | Auth Method | Library | Notes |
+|---|---|---|---|
+| CloudBoard.Client (WASM) | MSAL.js (redirect flow) | `Microsoft.Authentication.WebAssembly.Msal` | Standalone WASM, obtains access tokens for API |
+| CloudBoard.AdminPortal (Server) | OpenID Connect (cookie-based) | `Microsoft.Identity.Web` | Server-side, session cookie after login |
+| CloudBoard.Api | JWT Bearer validation | `Microsoft.Identity.Web` | Validates tokens from both Client and AdminPortal |
+
+### Entra App Registrations
+
+| Registration | Used by | Notes |
 |---|---|---|
-| 1 | Solution scaffolding (7 projects under `src/`) | ⚠️ 4 of 7 |
-| 2 | `ClaudeTest.slnx` with Solution Items | ⚠️ Named `CloudBoard.slnx` |
-| 3 | `global.json` + `Directory.Build.props` + `Directory.Packages.props` + `.editorconfig` + `.gitignore` | ✅ |
-| 4 | `README.md` | ✅ |
-| 5 | Domain entities (9) + enums (4) + value objects (1) | ✅ |
-| 6 | Application CQRS handlers + DTOs + interfaces + validators + DI | ✅ |
-| 7 | Infrastructure in-memory repos (9) + stubs | ✅ |
-| 8 | Infrastructure Cosmos repos (9) pre-built for week04 | ✅ |
-| 9 | **In-memory seed data (`InMemoryDataSeeder`)** | ✅ **NEW** |
-| 10 | API controllers (10) + `Program.cs` + Swagger + CORS | ✅ |
-| 11 | **Auto-seed on startup** (feature-flag guarded in Program.cs) | ✅ **NEW** |
-| 12 | `appsettings.json` with FeatureFlags + placeholder config | ✅ |
-| 13 | Auth middleware present but commented out | ✅ |
-| 14 | First-login seed service registered but not invoked | ✅ |
-| 15 | `CloudBoard.Client` (Blazor WASM shell) | ❌ |
-| 16 | `CloudBoard.AdminPortal` (Blazor Server shell) | ❌ |
-| 17 | `CloudBoard.Functions` (3 placeholder functions) | ❌ |
-| 18 | `/docs` folder (5 required + 1 progress report) | ✅ |
-| 19 | GitHub Actions workflows (4) | ❌ |
-| 20 | Build compiles successfully | ✅ |
+| **CloudBoard API** | Api, AdminPortal | Exposes `access_as_user` scope; defines app roles |
+| **CloudBoard Client** | Client (WASM) | Requests `access_as_user` scope from API registration |
+
+> Admin Portal **shares** the API registration — it authenticates via OIDC and uses cookies server-side.
 
 ---
 
-## Recommendation — Next Steps to Complete Week 01
+## Cosmos DB Design
 
-1. **Create `CloudBoard.Client`** — Standalone Blazor WASM with basic layout, nav menu, placeholder pages (Home, Tasks, Notes, Files), `HttpClient` configured for `https://localhost:7100`, MSAL auth placeholder.
+### Container layout
 
-2. **Create `CloudBoard.AdminPortal`** — Blazor Web App (InteractiveServer) with admin layout, placeholder pages (Dashboard, Workspaces, Activity Logs), `Microsoft.Identity.Web` auth placeholder.
+```mermaid
+graph LR
+    subgraph "Cosmos Account"
+        subgraph "Database: CloudBoardDb"
+            subgraph "Container: WorkspaceData<br/>Partition key: /workspaceId"
+                D1["docType: Workspace"]
+                D2["docType: TaskItem"]
+                D3["docType: NoteItem"]
+                D4["docType: FileItem"]
+                D5["docType: Tag"]
+                D6["docType: Comment"]
+                D7["docType: Membership"]
+                D8["docType: Invite"]
+                D9["docType: ActivityLog"]
+            end
+        end
+    end
 
-3. **Create `CloudBoard.Functions`** — Azure Functions v4 isolated with 3 HTTP-triggered stubs: `GenerateDailyWorkspaceSummary`, `ProcessFileVirusScanPlaceholder`, `CleanupExpiredInvites`.
+    style D1 fill:#FFEB3B,stroke:#F57F17
+    style D2 fill:#81D4FA,stroke:#0277BD
+    style D3 fill:#A5D6A7,stroke:#388E3C
+    style D4 fill:#FFCC80,stroke:#EF6C00
+    style D5 fill:#CE93D8,stroke:#7B1FA2
+    style D6 fill:#EF9A9A,stroke:#C62828
+    style D7 fill:#B39DDB,stroke:#512DA8
+    style D8 fill:#80CBC4,stroke:#00695C
+    style D9 fill:#F48FB1,stroke:#AD1457
+```
 
-4. **Rename `CloudBoard.slnx` → `ClaudeTest.slnx`** and add all 7 projects to it.
+### Query patterns
 
-5. **Create GitHub Actions workflows** (can be deferred to week05+).
+| Query | Partition used? | Cost |
+|---|---|---|
+| Get all tasks for workspace X | ✅ Single partition (workspaceId = X, docType = TaskItem) | Low (1–5 RU) |
+| Get single task by id + workspaceId | ✅ Point read | Very low (1 RU) |
+| Get all workspaces for user | ❌ Cross-partition (fan-out on ownerUserId) | Higher — consider indexing |
+| Get all activity logs (Admin) | ❌ Cross-partition scan | Expensive — use sparingly |
 
-> **Current state**: The back-end core (Domain → Application → Infrastructure → API) is **solid, well-architected, and fully functional** with seed data auto-populated on startup. Students can launch the API and immediately explore all endpoints via Swagger using deterministic sample data. The remaining work is the three frontend/functions project shells and the solution file rename.
+### Repository hierarchy
+
+```mermaid
+classDiagram
+    class CosmosRepositoryBase~T~ {
+        #Container : Container
+        #ReadItemAsync(id, partitionKey, ct) T?
+        #UpsertItemAsync(item, partitionKey, ct) T
+        #DeleteItemAsync(id, partitionKey, ct)
+        #QueryPagedAsync(queryable, ct) ContinuationResult~T~
+    }
+
+    class CosmosWorkspaceRepository {
+        +CreateAsync()
+        +GetByIdAsync()
+        +ListByOwnerAsync()
+        +UpdateAsync()
+        +DeleteAsync()
+    }
+
+    class CosmosTaskRepository {
+        +CreateAsync()
+        +GetByIdAsync()
+        +ListByWorkspaceAsync()
+        +UpdateAsync()
+        +DeleteAsync()
+    }
+
+    CosmosRepositoryBase <|-- CosmosWorkspaceRepository
+    CosmosRepositoryBase <|-- CosmosTaskRepository
+    CosmosRepositoryBase <|-- CosmosNoteRepository
+    CosmosRepositoryBase <|-- CosmosFileRepository
+    CosmosRepositoryBase <|-- CosmosTagRepository
+    CosmosRepositoryBase <|-- CosmosCommentRepository
+    CosmosRepositoryBase <|-- CosmosMembershipRepository
+    CosmosRepositoryBase <|-- CosmosInviteRepository
+    CosmosRepositoryBase <|-- CosmosActivityLogRepository
+```
+
+### Cosmos LINQ warnings
+
+> ⚠️ **Cosmos LINQ ≠ EF LINQ**
+> - No lazy loading, no navigation properties.
+> - Use `.ToFeedIterator()` not `.ToListAsync()` — the latter pulls everything into memory.
+> - Not all LINQ operators are supported (e.g., no `GroupBy`, limited `Select` projections).
+> - Always test queries in the Cosmos emulator or Data Explorer to check RU costs.
+
+---
+
+## Blob Storage Design
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant API as CloudBoard.Api
+    participant Blob as Azure Blob Storage
+    participant Cosmos as Cosmos DB
+
+    Note over C,Cosmos: File Upload
+    C->>API: POST /api/workspaces/{id}/files<br/>(multipart/form-data)
+    API->>Blob: UploadAsync(stream)
+    Blob-->>API: blobName
+    API->>Cosmos: Save FileItem metadata<br/>(fileName, contentType, sizeBytes, blobName)
+    Cosmos-->>API: FileItem
+    API-->>C: 201 Created + FileDto
+
+    Note over C,Cosmos: File Download
+    C->>API: GET /api/workspaces/{id}/files/{fileId}/download
+    API->>Cosmos: Get FileItem (find blobName)
+    Cosmos-->>API: FileItem
+    API->>Blob: DownloadAsync(blobName)
+    Blob-->>API: Stream
+    API-->>C: 200 OK + file stream
+```
+
+### Blob naming convention
+
+```
+cloudboard-files/
+  └── {workspaceId}/
+      └── {fileId}/{originalFileName}
+```
+
+### Tangent extension points (future weeks)
+
+| Feature | Status | Notes |
+|---|---|---|
+| Upload / Download | ✅ Implemented | Via `IBlobStorageService` |
+| Versioning | 🔲 Placeholder | Append version suffix to blob name |
+| Soft delete | 🔲 Placeholder | Set `isDeleted` flag on FileItem |
+| SAS sharing links | 🔲 Placeholder | `GenerateSasUrlAsync()` method stub exists |
+| Direct-to-blob upload | 🔲 Tangent | Client uploads directly to Blob with SAS; API saves metadata only |
+
+---
+
+## Azure Functions Integration
+
+```mermaid
+graph LR
+    API["CloudBoard.Api"] -- "HTTP POST + Function Key" --> F1["GenerateDailyWorkspaceSummary"]
+    API -- "HTTP POST + Function Key" --> F2["ProcessFileVirusScanPlaceholder"]
+    API -- "HTTP POST + Function Key" --> F3["CleanupExpiredInvites"]
+
+    F1 --> COSMOS[("Cosmos DB")]
+    F2 --> COSMOS
+    F3 --> COSMOS
+
+    style API fill:#81C784,stroke:#388E3C
+    style F1 fill:#FFB74D,stroke:#F57C00
+    style F2 fill:#FFB74D,stroke:#F57C00
+    style F3 fill:#FFB74D,stroke:#F57C00
+    style COSMOS fill:#CE93D8,stroke:#7B1FA2
+```
+
+| Function | Trigger | Purpose |
+|---|---|---|
+| `GenerateDailyWorkspaceSummary` | HTTP (POST) | Aggregates ActivityLog entries for a workspace into a daily summary |
+| `ProcessFileVirusScanPlaceholder` | HTTP (POST) | Placeholder pipeline — logs that scan occurred, no real scanning |
+| `CleanupExpiredInvites` | HTTP (POST) | Deletes Invite documents past their `ExpiresUtc` |
+
+### Calling pattern from API
+
+```csharp
+// In the API controller or handler:
+await _functionsClient.TriggerDailySummaryAsync(workspaceId, ct);
+
+// IFunctionsClient interface (Application layer)
+// FunctionsClient implementation (Infrastructure layer)
+// Calls: POST {baseUrl}/api/GenerateDailyWorkspaceSummary?code={functionKey}
+```
+
+### Security
+
+- Function keys are stored in `appsettings.json` (local) or Azure Key Vault (production).
+- The client app **never** has the function key — only the API does.
+- In production, consider adding VNet integration or IP restrictions for defense-in-depth.
+
+---
+
+## Paging Strategy
+
+CloudBoard uses **continuation-token-based paging** instead of offset/skip paging.
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant API as CloudBoard.Api
+    participant DB as Cosmos DB
+
+    C->>API: GET /api/workspaces/{id}/tasks?pageSize=20
+    API->>DB: Query (page 1)
+    DB-->>API: 20 items + continuationToken="abc123"
+    API-->>C: { items: [...], continuationToken: "abc123" }
+
+    C->>API: GET /api/workspaces/{id}/tasks?pageSize=20&continuationToken=abc123
+    API->>DB: Query (page 2, with token)
+    DB-->>API: 15 items + continuationToken=null
+    API-->>C: { items: [...], continuationToken: null }
+    Note over C: continuationToken is null → no more pages
+```
+
+### Why continuation tokens?
+
+| Aspect | Continuation Token | Offset / Skip |
+|---|---|---|
+| **Cosmos cost** | Low — DB remembers position | High — DB must scan and discard N rows |
+| **Consistency** | Stable — new inserts don't shift pages | Unstable — inserts cause duplicate/missing rows |
+| **Implementation** | Opaque string from Cosmos SDK | Simple integer math |
+| **Client complexity** | Must store token between requests | Just increment page number |
+
+### Response shape
+
+```json
+{
+  "items": [
+    { "id": "...", "title": "My Task", "isDone": false, ... },
+    { "id": "...", "title": "Another Task", "isDone": true, ... }
+  ],
+  "continuationToken": "eyJjb250aW51YXRpb24i..."
+}
+```
+
+When `continuationToken` is `null`, the client knows there are no more pages.
+
+---
+
+## Feature Flags & Swappable Infrastructure
+
+CloudBoard uses **feature flags** in `appsettings.json` to toggle between in-memory stubs and real Azure services.
+
+```mermaid
+graph TD
+    FLAGS["appsettings.json<br/>FeatureFlags"]
+    FLAGS --> |"UseCosmosDb: false"| MEM_REPO["InMemory Repositories<br/>(week01–03)"]
+    FLAGS --> |"UseCosmosDb: true"| COSMOS_REPO["Cosmos Repositories<br/>(week04+)"]
+    FLAGS --> |"UseAzureStorage: false"| MEM_BLOB["InMemory Blob Service<br/>(week01–04)"]
+    FLAGS --> |"UseAzureStorage: true"| AZURE_BLOB["Azure Blob Service<br/>(week05+)"]
+    FLAGS --> |"UseFunctionsClient: false"| NOOP["NoOp Functions Client<br/>(week01–05)"]
+    FLAGS --> |"UseFunctionsClient: true"| REAL_FUNC["Real Functions Client<br/>(week06+)"]
+
+    style FLAGS fill:#FFE082,stroke:#F9A825,color:#000
+    style MEM_REPO fill:#E0E0E0,stroke:#757575
+    style COSMOS_REPO fill:#CE93D8,stroke:#7B1FA2
+    style MEM_BLOB fill:#E0E0E0,stroke:#757575
+    style AZURE_BLOB fill:#A5D6A7,stroke:#388E3C
+    style NOOP fill:#E0E0E0,stroke:#757575
+    style REAL_FUNC fill:#FFB74D,stroke:#F57C00
+```
+
+```json
+{
+  "FeatureFlags": {
+    "UseCosmosDb": false,
+    "UseAzureStorage": false,
+    "UseFunctionsClient": false
+  }
+}
+```
+
+This means:
+- **Week 01**: All flags `false` — runs entirely in-memory with zero Azure dependencies.
+- **Week 04**: Flip `UseCosmosDb` to `true` — now using real Cosmos DB.
+- **Week 05**: Flip `UseAzureStorage` to `true` — real Blob Storage for file uploads.
+- **Week 06**: Flip `UseFunctionsClient` to `true` — API calls real Azure Functions.
+
+> **Why?** Students can run the full solution locally from day one without installing the Cosmos emulator or creating Azure resources. Each week "turns on" a new integration.
